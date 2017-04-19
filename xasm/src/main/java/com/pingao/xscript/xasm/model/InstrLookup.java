@@ -16,5 +16,5 @@ public class InstrLookup {
     private String mnemonic;
     private int opCode;
     @NonNull private int opCount;
-    private List<OpTypes> opTypesList;
+    private List<OpTypes> opTypesList = new ArrayList<OpTypes>();
 }
