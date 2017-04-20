@@ -97,7 +97,7 @@ public class ParseUtil {
             }
             if (line.charAt(i) == ';') {
                 if (!isInString) {
-                    return "\n";
+                    return line.substring(0, i);
                 }
             }
         }

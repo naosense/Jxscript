@@ -139,6 +139,7 @@ public class Xasm {
         System.out.printf("\n");
         System.out.printf("\t- File extensions are not required.\n");
         System.out.printf("\t- Executable name is optional; source name is used by default.\n");
+        System.out.printf("\n");
     }
 
     private List<String> sourceCodes;
@@ -146,8 +147,12 @@ public class Xasm {
 
     public void loadSourceCode(String sourcePath) throws IOException {
         sourceCodes = Files.readAllLines(Paths.get(sourcePath));
-        for (int i = 0; i < sourceCodes.size(); i++) {
-            clearCodes.add(ParseUtil.stripeComments(sourceCodes.get(i)));
+        clearCodes = new ArrayList<String>();
+        for (String sourceCode : sourceCodes) {
+            String newLine = ParseUtil.stripeComments(sourceCode);
+            if (newLine != null && newLine.length() != 0) {
+                clearCodes.add(newLine.trim());
+            }
         }
     }
 
@@ -412,6 +417,16 @@ public class Xasm {
             | OP_FLAG_TYPE_REG));
     }
 
+    int getInstrByMnemonic(String mnemonic, List<InstrLookup> instrTable) {
+        for (int i = 0; i < instrTable.size(); i++) {
+            InstrLookup l = instrTable.get(i);
+            if (mnemonic.equals(l.getMnemonic())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private List<FunNode> funTable;
     private List<LabelNode> labelTable;
     private List<SymbolNode> symbolTable;
@@ -491,12 +506,15 @@ public class Xasm {
         return null;
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         Xasm xasm = new Xasm();
-        xasm.initInstrTable();
-        for (InstrLookup l : xasm.instrTable) {
-            System.out.println(l);
-        }
-        System.out.println(Xasm.instrIndex);
+        xasm.loadSourceCode("D:\\project\\Jxscript\\source.txt");
+        System.out.println(xasm.sourceCodes);
+        System.out.println(xasm.clearCodes);
+        //xasm.initInstrTable();
+        //for (InstrLookup l : xasm.instrTable) {
+        //    System.out.println(l);
+        //}
+        //System.out.println(Xasm.instrIndex);
     }
 }

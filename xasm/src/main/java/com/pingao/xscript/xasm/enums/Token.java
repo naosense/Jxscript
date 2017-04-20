@@ -3,7 +3,7 @@ package com.pingao.xscript.xasm.enums;
 /**
  * Created by pingao on 2017/2/6.
  */
-public enum TokenEnum {
+public enum Token {
     TOKEN_TYPE_INT(0),
     TOKEN_TYPE_FLOAT(1),
     TOKEN_TYPE_STRING(2),
@@ -27,7 +27,7 @@ public enum TokenEnum {
 
     private int value;
 
-    TokenEnum(int value) {
+    Token(int value) {
         this.value = value;
     }
 
