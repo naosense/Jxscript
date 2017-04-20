@@ -128,7 +128,7 @@ public class Lex2 {
         currentToken = Token.TOKEN_TYPE_INVALID;
 
         // 字符串
-        if (currentLexeme.length() > 1 && currentLexeme.charAt(0) == '"') {
+        if (currentLexeme.length() > 1) {
             if (currentState == LexState.IN_STR) {
                 currentToken = Token.TOKEN_TYPE_STRING;
                 return currentToken;
