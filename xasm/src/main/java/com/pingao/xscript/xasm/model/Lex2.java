@@ -1,5 +1,6 @@
 package com.pingao.xscript.xasm.model;
 
+import com.pingao.xscript.xasm.Xasm;
 import com.pingao.xscript.xasm.enums.Token;
 import com.pingao.xscript.xasm.util.ParseUtil;
 
@@ -12,30 +13,47 @@ import java.util.List;
 public class Lex2 {
     private int index0;
     private int index1;
-    private char[] lexeme;
     private List<String> codes;
     private int currentLine;
     private LexState currentState;
     private Token currentToken;
+    private String currentLexeme;
+    private char[] lexeme;
+    private List<InstrLookup> instrTable;
 
-    public enum LexState {NO_STR, IN_STR, END_STR}
+    public enum LexState {START_STR, IN_STR, END_STR}
 
-    public Lex2(List<String> codes) {
-        lexeme = new char[256];
+    public Lex2(List<String> codes, List<InstrLookup> instrTable) {
         this.codes = codes;
-        this.currentState = LexState.NO_STR;
+        this.currentState = LexState.START_STR;
+        this.instrTable = instrTable;
+        this.lexeme = new char[1024];
     }
 
-    Token getNextToken() {
+    public Token getCurrentToken() {
+        return currentToken;
+    }
+
+    public String getCurrentLexeme() {
+        return currentLexeme;
+    }
+
+    public LexState getCurrentState() {
+        return currentState;
+    }
+
+    public Token getNextToken() {
+        lexeme = new char[1024];
         index0 = index1;
         if (index0 >= codes.get(currentLine).length()) {
             if (!skipToNextLine()) {
-                return Token.END_OF_TOKEN_STREAM;
+                currentToken = Token.END_OF_TOKEN_STREAM;
+                return currentToken;
             }
         }
 
         if (currentState == LexState.END_STR) {
-            currentState = LexState.NO_STR;
+            currentState = LexState.START_STR;
         }
 
         // 非字符串
@@ -82,6 +100,104 @@ public class Lex2 {
                 index1++;
             }
         }
+
+        // 现在index0和index1的位置都已经就位，从非字符状态碰到引号时会发生这种情况
+        if (index1 == index0) {
+            index1++;
+        }
+
+        int count = 0;
+        for (int i = index0; i < index1; i++) {
+            if (currentState == LexState.IN_STR) {
+                if (codes.get(currentLine).charAt(i) == '\\') {
+                    i++;
+                }
+            }
+            lexeme[count] = codes.get(currentLine).charAt(i);
+            count++;
+        }
+
+        currentLexeme = new String(lexeme, 0, count);
+
+        // 如果不是字符串，把它转为大写
+        if (currentState != LexState.IN_STR) {
+            currentLexeme = currentLexeme.toUpperCase();
+        }
+
+        // 设置默认值
+        currentToken = Token.TOKEN_TYPE_INVALID;
+
+        // 字符串
+        if (currentLexeme.length() > 1 && currentLexeme.charAt(0) == '"') {
+            if (currentState == LexState.IN_STR) {
+                currentToken = Token.TOKEN_TYPE_STRING;
+                return currentToken;
+            }
+        }
+
+        // 单字符
+        if (currentLexeme.length() == 1) {
+            switch (currentLexeme.charAt(0)) {
+                case '"':
+                    switch (currentState) {
+                        case START_STR:
+                            currentState = LexState.IN_STR;
+                            break;
+                        case IN_STR:
+                            currentState = LexState.END_STR;
+                            break;
+                        case END_STR:
+                            //currentState = LexState.START_STR;
+                            break;
+                    }
+                    currentToken = Token.TOKEN_TYPE_QUOTE;
+                    break;
+                case ',':
+                    currentToken = Token.TOKEN_TYPE_COMMA;
+                    break;
+                case ':':
+                    currentToken = Token.TOKEN_TYPE_COLON;
+                    break;
+                case '[':
+                    currentToken = Token.TOKEN_TYPE_OPEN_BRACKET;
+                    break;
+                case ']':
+                    currentToken = Token.TOKEN_TYPE_CLOSE_BRACKET;
+                    break;
+                case '{':
+                    currentToken = Token.TOKEN_TYPE_OPEN_BRACE;
+                    break;
+                case '}':
+                    currentToken = Token.TOKEN_TYPE_CLOSE_BRACE;
+                    break;
+                case '\n':
+                    currentToken = Token.TOKEN_TYPE_NEWLINE;
+                    break;
+            }
+        }
+
+        // 多字符
+        if (Xasm.getInstrByMnemonic(currentLexeme, instrTable) > -1) {
+            currentToken = Token.TOKEN_TYPE_INSTR;
+        } else if (ParseUtil.isStringInteger(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_INT;
+        } else if (ParseUtil.isStringFloat(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_FLOAT;
+        } else if (ParseUtil.isIdentifier(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_IDENT;
+        } else if ("SETSTACKSIZE".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_SETSTACKSIZE;
+        } else if ("VAR".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_VAR;
+        } else if ("FUNC".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_FUNC;
+        } else if ("PARAM".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_PARAM;
+        } else if ("_RETVAL".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_REG_RETVAL;
+        }
+
+        return currentToken;
     }
 
     boolean skipToNextLine() {
@@ -90,7 +206,7 @@ public class Lex2 {
             return false;
         }
         index0 = index1 = 0;
-        currentState = LexState.NO_STR;
+        currentState = LexState.START_STR;
         return true;
     }
 
