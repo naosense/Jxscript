@@ -1,13 +1,13 @@
 package com.pingao.xscript.xasm;
 
+import com.pingao.xscript.xasm.enums.Token;
 import com.pingao.xscript.xasm.model.*;
-import com.pingao.xscript.xasm.util.ParseUtil;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.pingao.xscript.xasm.enums.Token.*;
 
 /**
  * Created by pingao on 2017/2/3.
@@ -116,6 +116,24 @@ public class Xasm {
     public static final String ERROR_MSSG_INVALID_ARRAY_INDEX = "Invalid array index";
 
     private static int instrIndex;
+    private String sourceFile;
+    private List<FunNode> funTable;
+    private List<LabelNode> labelTable;
+    private List<SymbolNode> symbolTable;
+    private List<String> stringTable;
+
+    private int stackSize;
+    private boolean isMainFuncPresent;
+    private int instrStreamSize;
+    private boolean isSetStackSizeFound;
+    private int globalDataSize;
+
+    private boolean isFuncActive;
+    private FunNode currentFunc;
+    private int currentFuncIndex;
+    private String currentFuncName;
+    private int currentParamCount;
+    private int currentFuncLocalDataSize;
 
     public Xasm() {
         instrTable = new ArrayList<InstrLookup>();
@@ -140,20 +158,6 @@ public class Xasm {
         System.out.printf("\t- File extensions are not required.\n");
         System.out.printf("\t- Executable name is optional; source name is used by default.\n");
         System.out.printf("\n");
-    }
-
-    private List<String> sourceCodes;
-    public List<String> clearCodes;
-
-    public void loadSourceCode(String sourcePath) throws IOException {
-        sourceCodes = Files.readAllLines(Paths.get(sourcePath));
-        clearCodes = new ArrayList<String>();
-        for (String sourceCode : sourceCodes) {
-            String newLine = ParseUtil.stripeComments(sourceCode);
-            if (newLine != null && newLine.length() != 0) {
-                clearCodes.add(newLine.trim());
-            }
-        }
     }
 
     private List<InstrLookup> instrTable;
@@ -417,20 +421,15 @@ public class Xasm {
             | OP_FLAG_TYPE_REG));
     }
 
-    int getInstrByMnemonic(String mnemonic, List<InstrLookup> instrTable) {
+    public static int getInstrByMnemonic(String mnemonic, List<InstrLookup> instrTable) {
         for (int i = 0; i < instrTable.size(); i++) {
             InstrLookup l = instrTable.get(i);
-            if (mnemonic.equals(l.getMnemonic())) {
+            if (mnemonic.equalsIgnoreCase(l.getMnemonic())) {
                 return i;
             }
         }
         return -1;
     }
-
-    private List<FunNode> funTable;
-    private List<LabelNode> labelTable;
-    private List<SymbolNode> symbolTable;
-    private List<String> stringTable;
 
     public int addString(List<String> stringTable, String string) {
         int index = stringTable.indexOf(string);
@@ -506,11 +505,95 @@ public class Xasm {
         return null;
     }
 
+    public void assmblSourceFile() {
+        initInstrTable();
+        Lex2 lex2 = new Lex2(instrTable, sourceFile);
+        lex2.resetLexer();
+
+        while (true) {
+            if (lex2.getNextToken() == Token.END_OF_TOKEN_STREAM) {
+                break;
+            }
+
+            switch (lex2.getCurrentToken()) {
+                case TOKEN_TYPE_SETSTACKSIZE:
+                    // 只能是全局的
+                    if (isFuncActive) {
+                        lex2.exitOnCodeError(ERROR_MSSG_LOCAL_SETSTACKSIZE);
+                    }
+
+                    // 只能出现一次
+                    if (isSetStackSizeFound) {
+                        lex2.exitOnCodeError(ERROR_MSSG_MULTIPLE_SETSTACKSIZES);
+                    }
+
+                    if (lex2.getNextToken() != Token.TOKEN_TYPE_INT) {
+                        lex2.exitOnCodeError(ERROR_MSSG_INVALID_STACK_SIZE);
+                    }
+
+                    stackSize = Integer.parseInt(lex2.getCurrentLexeme());
+                    isSetStackSizeFound = true;
+                    break;
+                case TOKEN_TYPE_VAR:
+                    if (lex2.getNextToken() != Token.TOKEN_TYPE_IDENT) {
+                        lex2.exitOnCodeError(ERROR_MSSG_IDENT_EXPECTED);
+                    }
+
+                    String ident = lex2.getCurrentLexeme();
+                    // 默认非数组
+                    int iSize = 1;
+
+                    // 偷看一眼是不是数组
+                    if (lex2.lookAheadChar() == '[') {
+                        if (lex2.getNextToken() != TOKEN_TYPE_OPEN_BRACKET) {
+                            lex2.exitOnCharExpectError('[');
+                        }
+
+                        if (lex2.getNextToken() != TOKEN_TYPE_INT) {
+                            lex2.exitOnCodeError(ERROR_MSSG_INVALID_ARRAY_SIZE);
+                        }
+
+                        iSize = Integer.parseInt(lex2.getCurrentLexeme());
+
+                        if (iSize <= 0) {
+                            lex2.exitOnCodeError(ERROR_MSSG_INVALID_ARRAY_SIZE);
+                        }
+
+                        if (lex2.getNextToken() != TOKEN_TYPE_CLOSE_BRACKET) {
+                            lex2.exitOnCharExpectError(']');
+                        }
+                    }
+
+                    int iStackIndex;
+                    // 局部变量
+                    if (isFuncActive) {
+                        iStackIndex = -(currentFuncLocalDataSize + 2);
+                    } else {
+                        iStackIndex = globalDataSize;
+                    }
+
+                    if (addSymbol(ident, iSize, iStackIndex, currentFuncIndex) == -1) {
+                        lex2.exitOnCodeError(ERROR_MSSG_IDENT_REDEFINITION);
+                    }
+
+                    if (isFuncActive) {
+                        currentFuncLocalDataSize += iSize;
+                    } else {
+                        globalDataSize += iSize;
+                    }
+
+                    break;
+                case TOKEN_TYPE_FUNC:
+                    // 函数不能嵌套
+                    if (isFuncActive) {
+                        lex2.exitOnCodeError(ERROR_MSSG_NESTED_FUNC);
+                    }
+            }
+        }
+    }
+
     public static void main(String[] args) throws IOException {
-        Xasm xasm = new Xasm();
-        xasm.loadSourceCode("D:\\project\\Jxscript\\source.txt");
-        System.out.println(xasm.sourceCodes);
-        System.out.println(xasm.clearCodes);
+
         //xasm.initInstrTable();
         //for (InstrLookup l : xasm.instrTable) {
         //    System.out.println(l);

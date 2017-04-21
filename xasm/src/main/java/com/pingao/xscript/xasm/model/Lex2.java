@@ -3,13 +3,19 @@ package com.pingao.xscript.xasm.model;
 import com.pingao.xscript.xasm.Xasm;
 import com.pingao.xscript.xasm.enums.Token;
 import com.pingao.xscript.xasm.util.ParseUtil;
+import lombok.AccessLevel;
+import lombok.Getter;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Created by pingao on 2017/2/7.
  */
+@Getter
 public class Lex2 {
     private int index0;
     private int index1;
@@ -18,28 +24,34 @@ public class Lex2 {
     private LexState currentState;
     private Token currentToken;
     private String currentLexeme;
+    @Getter(AccessLevel.PRIVATE)
     private char[] lexeme;
+    @Getter(AccessLevel.PRIVATE)
     private List<InstrLookup> instrTable;
+    @Getter(AccessLevel.PRIVATE)
+    private String fileName;
 
-    public enum LexState {START_STR, IN_STR, END_STR}
+    private enum LexState {NO_STR, IN_STR, END_STR}
 
-    public Lex2(List<String> codes, List<InstrLookup> instrTable) {
-        this.codes = codes;
-        this.currentState = LexState.START_STR;
+    public Lex2(List<InstrLookup> instrTable, String fileName) {
+        loadSourceCode(fileName);
+        this.currentState = LexState.NO_STR;
         this.instrTable = instrTable;
+        this.fileName = fileName;
         this.lexeme = new char[1024];
     }
 
-    public Token getCurrentToken() {
-        return currentToken;
-    }
-
-    public String getCurrentLexeme() {
-        return currentLexeme;
-    }
-
-    public LexState getCurrentState() {
-        return currentState;
+    private void loadSourceCode(String sourcePath) {
+        List<String> sourceCodes;
+        try {
+            sourceCodes = Files.readAllLines(Paths.get(sourcePath));
+            codes = new ArrayList<String>();
+            for (String sourceCode : sourceCodes) {
+                codes.add(ParseUtil.stripeComments(sourceCode).trim() + '\n');
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public Token getNextToken() {
@@ -53,7 +65,7 @@ public class Lex2 {
         }
 
         if (currentState == LexState.END_STR) {
-            currentState = LexState.START_STR;
+            currentState = LexState.NO_STR;
         }
 
         // 非字符串
@@ -140,14 +152,14 @@ public class Lex2 {
             switch (currentLexeme.charAt(0)) {
                 case '"':
                     switch (currentState) {
-                        case START_STR:
+                        case NO_STR:
                             currentState = LexState.IN_STR;
                             break;
                         case IN_STR:
                             currentState = LexState.END_STR;
                             break;
                         case END_STR:
-                            //currentState = LexState.START_STR;
+                            //currentState = LexState.NO_STR;
                             break;
                     }
                     currentToken = Token.TOKEN_TYPE_QUOTE;
@@ -200,13 +212,73 @@ public class Lex2 {
         return currentToken;
     }
 
+    public char lookAheadChar() {
+        int currentLine = this.currentLine;
+        int index = index1;
+
+        if (currentState != LexState.IN_STR) {
+            while (true) {
+
+                // 如果到达行尾，取下一行
+                if (index >= codes.get(currentLine).length()) {
+                    currentLine++;
+
+                    if (currentLine >= codes.size()) {
+                        return 0;
+                    }
+                    index = 0;
+                }
+
+                if (!ParseUtil.isCharWhiteSpace(codes.get(currentLine).charAt(index))) {
+                    break;
+                }
+                index++;
+            }
+        }
+        return codes.get(currentLine).charAt(index);
+    }
+
+    void exitOnError(String msg) {
+        throw new IllegalStateException(msg);
+    }
+
+    public void exitOnCodeError(String msg) {
+        System.out.printf("Error: %s.\n\n", msg);
+        System.out.printf("Line: %d\n", currentLine);
+
+        // 将制表符替换为空格，更整齐
+        String currentSourceLine = codes.get(currentLine);
+        currentSourceLine = currentSourceLine.replace('\t', ' ');
+        System.out.printf("%s", currentSourceLine);
+
+        // 在出错的地方打印个^
+        for (int i = 0; i < index0; i++) {
+            System.out.printf(" ");
+        }
+        System.out.printf("^\n");
+
+        System.out.printf("Could not assemble %s.\n", fileName);
+        exitOnError(msg);
+    }
+
+    public void exitOnCharExpectError(char c) {
+        exitOnError(c + "expected");
+    }
+
+    public void resetLexer() {
+        currentLine = 0;
+        index0 = index1 = 0;
+        currentToken = Token.TOKEN_TYPE_INVALID;
+        currentState = LexState.NO_STR;
+    }
+
     boolean skipToNextLine() {
         currentLine++;
         if (currentLine >= codes.size()) {
             return false;
         }
         index0 = index1 = 0;
-        currentState = LexState.START_STR;
+        currentState = LexState.NO_STR;
         return true;
     }
 
