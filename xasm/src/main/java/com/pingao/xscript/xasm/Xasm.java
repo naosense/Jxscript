@@ -124,6 +124,7 @@ public class Xasm {
 
     private int stackSize;
     private boolean isMainFuncPresent;
+    private int mainFuncIndex;
     private int instrStreamSize;
     private boolean isSetStackSizeFound;
     private int globalDataSize;
@@ -132,7 +133,7 @@ public class Xasm {
     private FunNode currentFunc;
     private int currentFuncIndex;
     private String currentFuncName;
-    private int currentParamCount;
+    private int currentFuncParamCount;
     private int currentFuncLocalDataSize;
 
     public Xasm() {
@@ -505,6 +506,12 @@ public class Xasm {
         return null;
     }
 
+    private void setFuncInfo(String funcName, int paramCount, int localDataSize) {
+        FunNode funNode = getFunByName(funcName);
+        funNode.setParamCount(paramCount);
+        funNode.setLocalDataSize(localDataSize);
+    }
+
     public void assmblSourceFile() {
         initInstrTable();
         Lex2 lex2 = new Lex2(instrTable, sourceFile);
@@ -588,6 +595,48 @@ public class Xasm {
                     if (isFuncActive) {
                         lex2.exitOnCodeError(ERROR_MSSG_NESTED_FUNC);
                     }
+
+                    if (lex2.getNextToken() != TOKEN_TYPE_IDENT) {
+                        lex2.exitOnCodeError(ERROR_MSSG_IDENT_EXPECTED);
+                    }
+
+                    String funcName = lex2.getCurrentLexeme();
+                    int iEntryPoint = instrStreamSize;
+
+                    int iFuncIndex = addFunc(funcName, iEntryPoint);
+                    if (iFuncIndex == -1) {
+                        lex2.exitOnCodeError(ERROR_MSSG_FUNC_REDEFINITION);
+                    }
+
+                    if (MAIN_FUNC_NAME.equals(funcName)) {
+                        isMainFuncPresent = true;
+                        mainFuncIndex = iFuncIndex;
+                    }
+
+                    isFuncActive = true;
+                    currentFuncName = funcName;
+                    currentFuncIndex = iFuncIndex;
+                    currentFuncParamCount = 0;
+                    currentFuncLocalDataSize = 0;
+
+                    while (lex2.getNextToken() == TOKEN_TYPE_NEWLINE) ;
+
+                    if (lex2.getCurrentToken() != TOKEN_TYPE_OPEN_BRACE) {
+                        lex2.exitOnCharExpectError('{');
+                    }
+
+                    instrStreamSize++;
+                    break;
+                case TOKEN_TYPE_CLOSE_BRACE:
+                    // 必须在函数里
+                    if (!isFuncActive) {
+                        lex2.exitOnCharExpectError('}');
+                    }
+
+                    setFuncInfo(currentFuncName, currentFuncParamCount, currentFuncLocalDataSize);
+
+                    isFuncActive = false;
+                    break;
             }
         }
     }
