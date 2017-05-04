@@ -125,6 +125,7 @@ public class Xasm {
     private int stackSize;
     private boolean isMainFuncPresent;
     private int mainFuncIndex;
+    private List<Instr> instrStream;
     private int instrStreamSize;
     private boolean isSetStackSizeFound;
     private int globalDataSize;
@@ -541,6 +542,7 @@ public class Xasm {
                     stackSize = Integer.parseInt(lex2.getCurrentLexeme());
                     isSetStackSizeFound = true;
                     break;
+
                 case TOKEN_TYPE_VAR:
                     if (lex2.getNextToken() != Token.TOKEN_TYPE_IDENT) {
                         lex2.exitOnCodeError(ERROR_MSSG_IDENT_EXPECTED);
@@ -590,6 +592,7 @@ public class Xasm {
                     }
 
                     break;
+
                 case TOKEN_TYPE_FUNC:
                     // 函数不能嵌套
                     if (isFuncActive) {
@@ -627,6 +630,7 @@ public class Xasm {
 
                     instrStreamSize++;
                     break;
+
                 case TOKEN_TYPE_CLOSE_BRACE:
                     // 必须在函数里
                     if (!isFuncActive) {
@@ -637,6 +641,66 @@ public class Xasm {
 
                     isFuncActive = false;
                     break;
+
+                case TOKEN_TYPE_PARAM:
+                    // 必须在函数里
+                    if (!isFuncActive) {
+                        lex2.exitOnCodeError(ERROR_MSSG_GLOBAL_PARAM);
+                    }
+
+                    // 主函数没有参数
+                    if (MAIN_FUNC_NAME.equals(currentFuncName)) {
+                        lex2.exitOnCodeError(ERROR_MSSG_MAIN_PARAM);
+                    }
+
+                    if (lex2.getNextToken() != TOKEN_TYPE_IDENT) {
+                        lex2.exitOnCodeError(ERROR_MSSG_IDENT_EXPECTED);
+                    }
+
+                    currentFuncParamCount++;
+                    break;
+
+                case TOKEN_TYPE_INSTR:
+                    // 指令必须在函数中
+                    if (!isFuncActive) {
+                        lex2.exitOnCodeError(ERROR_MSSG_GLOBAL_INSTR);
+                    }
+
+                    instrStreamSize++;
+                    break;
+
+                // line label
+                case TOKEN_TYPE_IDENT:
+                    if (lex2.lookAheadChar() != ':') {
+                        lex2.exitOnCodeError(ERROR_MSSG_INVALID_INSTR);
+                    }
+
+                    // label必须在函数中
+                    if (!isFuncActive) {
+                        lex2.exitOnCodeError(ERROR_MSSG_GLOBAL_LINE_LABEL);
+                    }
+
+                    String label = lex2.getCurrentLexeme();
+
+                    int targetIndex = instrStreamSize - 1;
+                    int funcIndex = currentFuncIndex;
+
+                    if (addLabel(label, targetIndex, funcIndex) == -1) {
+                        lex2.exitOnCodeError(ERROR_MSSG_LINE_LABEL_REDEFINITION);
+                    }
+
+                    break;
+
+                default:
+                    if (lex2.getCurrentToken() != TOKEN_TYPE_NEWLINE) {
+                        lex2.exitOnCodeError(ERROR_MSSG_INVALID_INPUT);
+                    }
+
+            }
+
+            // 这里有点不懂
+            if (!lex2.skipToNextLine()) {
+                break;
             }
         }
     }

@@ -272,7 +272,7 @@ public class Lex2 {
         currentState = LexState.NO_STR;
     }
 
-    boolean skipToNextLine() {
+    public boolean skipToNextLine() {
         currentLine++;
         if (currentLine >= codes.size()) {
             return false;
