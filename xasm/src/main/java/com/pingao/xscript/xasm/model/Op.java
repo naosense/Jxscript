@@ -1,11 +1,17 @@
 package com.pingao.xscript.xasm.model;
 
-import lombok.Data;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 
 /**
  * Created by pingao on 2017/2/3.
  */
-@Data
+@Builder
+@Getter
+@Setter
+@ToString
 public class Op {
     private int type;
     private int intLiteral;

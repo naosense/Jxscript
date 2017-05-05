@@ -127,6 +127,7 @@ public class Xasm {
     private int mainFuncIndex;
     private List<Instr> instrStream;
     private int instrStreamSize;
+    private InstrLookup currentInstr;
     private boolean isSetStackSizeFound;
     private int globalDataSize;
 
@@ -423,14 +424,14 @@ public class Xasm {
             | OP_FLAG_TYPE_REG));
     }
 
-    public static int getInstrByMnemonic(String mnemonic, List<InstrLookup> instrTable) {
+    public static InstrLookup getInstrByMnemonic(String mnemonic, List<InstrLookup> instrTable) {
         for (int i = 0; i < instrTable.size(); i++) {
             InstrLookup l = instrTable.get(i);
             if (mnemonic.equalsIgnoreCase(l.getMnemonic())) {
-                return i;
+                return l;
             }
         }
-        return -1;
+        return null;
     }
 
     public int addString(List<String> stringTable, String string) {
@@ -496,6 +497,14 @@ public class Xasm {
             }
         }
         return null;
+    }
+
+    public int getStackIndexByIdent(String ident, int funcIndex) {
+        return getSymbolByIdent(ident, funcIndex).getStackIndex();
+    }
+
+    public int getSizeByIdent(String ident, int funcIndex) {
+        return getSymbolByIdent(ident, funcIndex).getSize();
     }
 
     public FunNode getFunByName(String name) {
@@ -695,10 +704,266 @@ public class Xasm {
                     if (lex2.getCurrentToken() != TOKEN_TYPE_NEWLINE) {
                         lex2.exitOnCodeError(ERROR_MSSG_INVALID_INPUT);
                     }
-
             }
 
             // 这里有点不懂
+            if (!lex2.skipToNextLine()) {
+                break;
+            }
+        }
+
+        // 第二次遍历
+        instrIndex = 0;
+
+        instrStream = new ArrayList<Instr>(instrStreamSize);
+
+        lex2.resetLexer();
+
+        while (true) {
+            if (lex2.getNextToken() == END_OF_TOKEN_STREAM) {
+                break;
+            }
+
+            switch (lex2.getNextToken()) {
+                case TOKEN_TYPE_FUNC:
+                    // 跳到函数名
+                    lex2.getNextToken();
+
+                    currentFunc = getFunByName(lex2.getCurrentLexeme());
+
+                    isFuncActive = true;
+
+                    currentFuncParamCount = 0;
+
+                    currentFuncIndex = currentFunc.getIndex();
+
+                    // 跳过换行
+                    while (lex2.getNextToken() == TOKEN_TYPE_NEWLINE) ;
+
+                    break;
+
+                case TOKEN_TYPE_CLOSE_BRACE:
+                    isFuncActive = false;
+
+                    // 如果刚刚结束的是主函数，添加exit指令
+                    if (currentFunc != null && MAIN_FUNC_NAME.equals(currentFunc.getName())) {
+                        Instr instr = new Instr();
+                        instr.setOpCode(INSTR_EXIT);
+                        instr.setOpCount(1);
+                        List<Op> ops = new ArrayList<Op>();
+                        ops.add(Op.builder().type(OP_TYPE_INT).intLiteral(0).build());
+                        instr.setOpList(ops);
+                        instrStream.add(instr);
+                    } else {
+                        Instr instr = new Instr();
+                        instr.setOpCode(INSTR_RET);
+                        instr.setOpCount(0);
+                        instrStream.add(instr);
+                    }
+
+                    instrIndex++;
+                    break;
+
+                case TOKEN_TYPE_PARAM:
+                    if (lex2.getNextToken() != TOKEN_TYPE_IDENT) {
+                        lex2.exitOnCodeError(ERROR_MSSG_IDENT_EXPECTED);
+                    }
+
+                    String ident = lex2.getCurrentLexeme();
+
+                    // TODO 为什么这么计算，2和1都是什么
+                    int stackIndex = -(currentFunc.getLocalDataSize() + 2 + (currentFuncParamCount + 1));
+
+                    if (addSymbol(ident, 1, stackIndex, currentFuncIndex) == -1) {
+                        lex2.exitOnCodeError(ERROR_MSSG_IDENT_REDEFINITION);
+                    }
+
+                    currentFuncParamCount++;
+
+                    break;
+
+                case TOKEN_TYPE_INSTR:
+                    currentInstr = getInstrByMnemonic(lex2.getCurrentLexeme(), instrTable);
+                    // TODO 是新建还是修改？
+                    instrStream.get(instrIndex).setOpCode(currentInstr.getOpCode());
+                    instrStream.get(instrIndex).setOpCount(currentInstr.getOpCount());
+
+                    List<Op> opList = new ArrayList<Op>(currentInstr.getOpCount());
+
+                    for (int i = 0; i < currentInstr.getOpCount(); i++) {
+                        OpTypes curType = currentInstr.getOpTypesList().get(i);
+
+                        Token initToken = lex2.getNextToken();
+
+                        switch (initToken) {
+                            case TOKEN_TYPE_INT:
+                                if ((curType.getTypes() & OP_FLAG_TYPE_INT) > 0) {
+                                    opList.add(Op.builder().type(OP_TYPE_INT).intLiteral(Integer.parseInt(lex2.getCurrentLexeme())).build());
+                                } else {
+                                    lex2.exitOnCodeError(ERROR_MSSG_INVALID_OP);
+                                }
+                                break;
+
+                            case TOKEN_TYPE_FLOAT:
+                                if ((curType.getTypes() & OP_FLAG_TYPE_FLOAT) > 0) {
+                                    opList.add(Op.builder().type(OP_TYPE_FLOAT).floatLiteral(Float.parseFloat(lex2.getCurrentLexeme())).build());
+                                } else {
+                                    lex2.exitOnCodeError(ERROR_MSSG_INVALID_OP);
+                                }
+                                break;
+
+                            case TOKEN_TYPE_QUOTE:
+                                if ((curType.getTypes() & OP_FLAG_TYPE_STRING) > 0) {
+                                    lex2.getNextToken();
+
+                                    switch (lex2.getCurrentToken()) {
+                                        // 空串
+                                        case TOKEN_TYPE_QUOTE:
+                                            opList.add(Op.builder()
+                                                .type(OP_TYPE_INT)
+                                                .intLiteral(0)
+                                                .build());
+                                            break;
+
+                                        case TOKEN_TYPE_STRING:
+                                            String str = lex2.getCurrentLexeme();
+                                            int strIndex = addString(stringTable, str);
+                                            if (lex2.getNextToken() != TOKEN_TYPE_QUOTE) {
+                                                lex2.exitOnCharExpectError('"');
+                                            }
+
+                                            opList.add(Op.builder().type(OP_TYPE_STRING_INDEX).stringTableIndex(strIndex).build());
+
+                                            break;
+
+                                        default:
+                                            lex2.exitOnCodeError(ERROR_MSSG_INVALID_STRING);
+                                    }
+                                } else {
+                                    lex2.exitOnCodeError(ERROR_MSSG_INVALID_OP);
+                                }
+
+                                break;
+
+                            case TOKEN_TYPE_REG_RETVAL:
+                                if ((curType.getTypes() & OP_TYPE_REG) > 0) {
+                                    opList.add(Op.builder().type(OP_TYPE_REG).regCode(0).build());
+                                } else {
+                                    lex2.exitOnCodeError(ERROR_MSSG_INVALID_OP);
+                                }
+                                break;
+
+                            case TOKEN_TYPE_IDENT:
+                                if ((curType.getTypes() & OP_FLAG_TYPE_MEM_REF) > 0) {
+
+                                    String strIdent = lex2.getCurrentLexeme();
+
+                                    if (getSymbolByIdent(strIdent, currentFuncIndex) == null) {
+                                        lex2.exitOnCodeError(ERROR_MSSG_UNDEFINED_IDENT);
+                                    }
+
+                                    int baseIndex = getStackIndexByIdent(strIdent, currentFuncIndex);
+
+                                    // 不是数组
+                                    if (lex2.lookAheadChar() != '[') {
+
+                                        // TODO 不懂
+                                        if (getSizeByIdent(strIdent, currentFuncIndex) > 1) {
+                                            lex2.exitOnCodeError(ERROR_MSSG_INVALID_ARRAY_NOT_INDEXED);
+                                        }
+
+                                        opList.add(Op.builder().type(OP_TYPE_ABS_STACK_INDEX).intLiteral(baseIndex).build());
+                                    } else {
+                                        // 是一个数组
+                                        if (getSizeByIdent(strIdent, currentFuncIndex) == 1) {
+                                            lex2.exitOnCodeError(ERROR_MSSG_INVALID_ARRAY);
+                                        }
+
+                                        if (lex2.getNextToken() != TOKEN_TYPE_OPEN_BRACKET) {
+                                            lex2.exitOnCharExpectError('[');
+                                        }
+
+                                        // 下一个必须是个整数或者一个指示符
+                                        Token indexToken = lex2.getNextToken();
+
+                                        if (indexToken == TOKEN_TYPE_INT) {
+                                            int offsetIndex = Integer.parseInt(lex2.getCurrentLexeme());
+                                            opList.add(Op.builder().type(OP_TYPE_ABS_STACK_INDEX).stackIndex(baseIndex + offsetIndex).build());
+                                        } else if (indexToken == TOKEN_TYPE_IDENT) {
+                                            String strIndexIdent = lex2.getCurrentLexeme();
+
+                                            if (getSymbolByIdent(strIndexIdent, currentFuncIndex) == null) {
+                                                lex2.exitOnCodeError(ERROR_MSSG_UNDEFINED_IDENT);
+                                            }
+
+                                            if (getSizeByIdent(strIndexIdent, currentFuncIndex) > 1) {
+
+                                                lex2.exitOnCodeError(ERROR_MSSG_INVALID_ARRAY_INDEX);
+                                            }
+
+                                            int offsetIndex = getStackIndexByIdent(strIndexIdent, currentFuncIndex);
+
+                                            opList.add(Op.builder().type(OP_TYPE_REL_STACK_INDEX).stackIndex(baseIndex).offsetIndex(offsetIndex).build());
+                                        } else {
+                                            lex2.exitOnCodeError(ERROR_MSSG_INVALID_ARRAY_INDEX);
+                                        }
+
+                                        if (lex2.getNextToken() != TOKEN_TYPE_CLOSE_BRACKET) {
+                                            lex2.exitOnCharExpectError(']');
+                                        }
+                                    }
+
+                                    // parsing a line label
+                                    if ((curType.getTypes() & OP_FLAG_TYPE_LINE_LABEL) > 0) {
+                                        String strLabelIdent = lex2.getCurrentLexeme();
+
+                                        LabelNode labelNode = getLabelByIdent(strLabelIdent, currentFuncIndex);
+
+                                        if (labelNode == null) {
+                                            lex2.exitOnCodeError(ERROR_MSSG_UNDEFINED_LINE_LABEL);
+                                        }
+
+                                        opList.add(Op.builder().type(OP_TYPE_INSTR_INDEX).instrIndex(labelNode.getTargetIndex()).build());
+                                    }
+
+                                    // parsing a function
+                                    if ((curType.getTypes() & OP_FLAG_TYPE_HOST_API_CALL) > 0) {
+                                        String hostApiCall = lex2.getCurrentLexeme();
+
+                                        int index = addString(stringTable, hostApiCall);
+
+                                        opList.add(Op.builder().type(OP_TYPE_HOST_API_CALL_INDEX).hostAPICallIndex(index).build());
+                                    }
+                                }
+                                break;
+
+                            default:
+                                lex2.exitOnCodeError(ERROR_MSSG_INVALID_OP);
+                                break;
+                        }
+
+                        // 多个变量必须以逗号分隔，除非是最后一个参数
+                        if (i < currentInstr.getOpCount() - 1) {
+                            if (lex2.getNextToken() != TOKEN_TYPE_COMMA) {
+                                lex2.exitOnCharExpectError(',');
+                            }
+                        }
+                    }
+
+                    // 确保后面没有其他东西
+                    if (lex2.getNextToken() != TOKEN_TYPE_NEWLINE) {
+                        lex2.exitOnCodeError(ERROR_MSSG_INVALID_INPUT);
+                    }
+
+                    instrStream.get(instrIndex).setOpList(opList);
+
+                    instrIndex++;
+
+                    break;
+
+            }
+
+            // to next line
             if (!lex2.skipToNextLine()) {
                 break;
             }

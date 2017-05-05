@@ -189,7 +189,7 @@ public class Lex2 {
         }
 
         // 多字符
-        if (Xasm.getInstrByMnemonic(currentLexeme, instrTable) > -1) {
+        if (Xasm.getInstrByMnemonic(currentLexeme, instrTable) != null) {
             currentToken = Token.TOKEN_TYPE_INSTR;
         } else if (ParseUtil.isStringInteger(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_INT;
