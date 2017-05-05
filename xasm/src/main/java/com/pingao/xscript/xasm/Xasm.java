@@ -115,12 +115,14 @@ public class Xasm {
     public static final String ERROR_MSSG_INVALID_ARRAY = "Invalid array";
     public static final String ERROR_MSSG_INVALID_ARRAY_INDEX = "Invalid array index";
 
+    private Lex2 lex2;
     private static int instrIndex;
     private String sourceFile;
     private List<FunNode> funTable;
     private List<LabelNode> labelTable;
     private List<SymbolNode> symbolTable;
     private List<String> stringTable;
+    private List<String> hostApiCallTable;
 
     private int stackSize;
     private boolean isMainFuncPresent;
@@ -138,9 +140,11 @@ public class Xasm {
     private int currentFuncParamCount;
     private int currentFuncLocalDataSize;
 
-    public Xasm() {
+    public Xasm(String sourceFile) {
+        this.sourceFile = sourceFile;
         instrTable = new ArrayList<InstrLookup>();
         stringTable = new ArrayList<String>();
+        hostApiCallTable = new ArrayList<String>();
         funTable = new ArrayList<FunNode>();
         labelTable = new ArrayList<LabelNode>();
         symbolTable = new ArrayList<SymbolNode>();
@@ -524,7 +528,7 @@ public class Xasm {
 
     public void assmblSourceFile() {
         initInstrTable();
-        Lex2 lex2 = new Lex2(instrTable, sourceFile);
+        lex2 = new Lex2(instrTable, sourceFile);
         lex2.resetLexer();
 
         while (true) {
@@ -784,9 +788,11 @@ public class Xasm {
 
                 case TOKEN_TYPE_INSTR:
                     currentInstr = getInstrByMnemonic(lex2.getCurrentLexeme(), instrTable);
+                    Instr instr = new Instr();
+                    instr.setOpCode(currentInstr.getOpCode());
+                    instr.setOpCount(currentInstr.getOpCount());
                     // TODO 是新建还是修改？
-                    instrStream.get(instrIndex).setOpCode(currentInstr.getOpCode());
-                    instrStream.get(instrIndex).setOpCount(currentInstr.getOpCount());
+                    instrStream.add(instr);
 
                     List<Op> opList = new ArrayList<Op>(currentInstr.getOpCount());
 
@@ -930,7 +936,7 @@ public class Xasm {
                                     if ((curType.getTypes() & OP_FLAG_TYPE_HOST_API_CALL) > 0) {
                                         String hostApiCall = lex2.getCurrentLexeme();
 
-                                        int index = addString(stringTable, hostApiCall);
+                                        int index = addString(hostApiCallTable, hostApiCall);
 
                                         opList.add(Op.builder().type(OP_TYPE_HOST_API_CALL_INDEX).hostAPICallIndex(index).build());
                                     }
@@ -960,7 +966,6 @@ public class Xasm {
                     instrIndex++;
 
                     break;
-
             }
 
             // to next line
@@ -970,12 +975,56 @@ public class Xasm {
         }
     }
 
-    public static void main(String[] args) throws IOException {
+    public void printAssmblStats() {
+        int varCount = 0;
+        int arrayCount = 0;
+        int globalCount = 0;
 
-        //xasm.initInstrTable();
-        //for (InstrLookup l : xasm.instrTable) {
-        //    System.out.println(l);
-        //}
-        //System.out.println(Xasm.instrIndex);
+        for (SymbolNode s : symbolTable) {
+            if (s.getSize() > 1) {
+                arrayCount++;
+            } else {
+                varCount++;
+            }
+
+            if (s.getStackIndex() >= 0) {
+                globalCount++;
+            }
+        }
+
+        System.out.printf("\n");
+        System.out.printf("%s created successfully!\n\n", sourceFile);
+        System.out.printf("Source Lines Processed: %d\n", lex2.getCodes().size());
+        System.out.printf("            Stack Size: ");
+        if (stackSize > 0) {
+            System.out.printf("%d", stackSize);
+        } else {
+            System.out.printf("Default");
+        }
+
+        System.out.printf("\n");
+        System.out.printf("Instructions Assembled: %d\n", instrStreamSize);
+        System.out.printf("             Variables: %d\n", varCount);
+        System.out.printf("                Arrays: %d\n", arrayCount);
+        System.out.printf("               Globals: %d\n", globalCount);
+        System.out.printf("       String Literals: %d\n", stringTable.size());
+        System.out.printf("                Labels: %d\n", labelTable.size());
+        System.out.printf("        Host API Calls: %d\n", hostApiCallTable.size());
+        System.out.printf("             Functions: %d\n", funTable.size());
+
+        System.out.printf("      _Main () Present: ");
+
+
+        if (isMainFuncPresent) {
+            System.out.printf("Yes (Index %d)\n", mainFuncIndex);
+        } else {
+            System.out.printf("No\n");
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        Xasm xasm = new Xasm("C:\\Users\\pingao.liu\\Desktop\\Programs\\Chapter 9\\XASM 0.4\\Source\\test_1.xasm");
+        xasm.assmblSourceFile();
+        xasm.printAssmblStats();
     }
 }

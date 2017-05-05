@@ -66,7 +66,7 @@ public class ParseUtil {
             }
         }
 
-        return false;
+        return true;
     }
 
     public static boolean isStringFloat(String str) {

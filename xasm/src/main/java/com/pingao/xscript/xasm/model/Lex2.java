@@ -189,7 +189,17 @@ public class Lex2 {
         }
 
         // 多字符
-        if (Xasm.getInstrByMnemonic(currentLexeme, instrTable) != null) {
+        if ("SETSTACKSIZE".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_SETSTACKSIZE;
+        } else if ("VAR".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_VAR;
+        } else if ("FUNC".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_FUNC;
+        } else if ("PARAM".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_PARAM;
+        } else if ("_RETVAL".equals(currentLexeme)) {
+            currentToken = Token.TOKEN_TYPE_REG_RETVAL;
+        } else if (Xasm.getInstrByMnemonic(currentLexeme, instrTable) != null) {
             currentToken = Token.TOKEN_TYPE_INSTR;
         } else if (ParseUtil.isStringInteger(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_INT;
@@ -197,16 +207,6 @@ public class Lex2 {
             currentToken = Token.TOKEN_TYPE_FLOAT;
         } else if (ParseUtil.isIdentifier(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_IDENT;
-        } else if ("SETSTACKSIZE".equalsIgnoreCase(currentLexeme)) {
-            currentToken = Token.TOKEN_TYPE_SETSTACKSIZE;
-        } else if ("VAR".equalsIgnoreCase(currentLexeme)) {
-            currentToken = Token.TOKEN_TYPE_VAR;
-        } else if ("FUNC".equalsIgnoreCase(currentLexeme)) {
-            currentToken = Token.TOKEN_TYPE_FUNC;
-        } else if ("PARAM".equalsIgnoreCase(currentLexeme)) {
-            currentToken = Token.TOKEN_TYPE_PARAM;
-        } else if ("_RETVAL".equalsIgnoreCase(currentLexeme)) {
-            currentToken = Token.TOKEN_TYPE_REG_RETVAL;
         }
 
         return currentToken;
@@ -256,6 +256,9 @@ public class Lex2 {
             System.out.printf(" ");
         }
         System.out.printf("^\n");
+
+        System.out.printf("Current token is %s\n", getCurrentToken());
+        System.out.printf("Current lex is %s\n", getCurrentLexeme());
 
         System.out.printf("Could not assemble %s.\n", fileName);
         exitOnError(msg);
