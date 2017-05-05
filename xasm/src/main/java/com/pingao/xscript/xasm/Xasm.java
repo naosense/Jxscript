@@ -4,6 +4,10 @@ import com.pingao.xscript.xasm.enums.Token;
 import com.pingao.xscript.xasm.model.*;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -992,8 +996,6 @@ public class Xasm {
             }
         }
 
-        System.out.printf("\n");
-        System.out.printf("%s created successfully!\n\n", sourceFile);
         System.out.printf("Source Lines Processed: %d\n", lex2.getCodes().size());
         System.out.printf("            Stack Size: ");
         if (stackSize > 0) {
@@ -1014,7 +1016,6 @@ public class Xasm {
 
         System.out.printf("      _Main () Present: ");
 
-
         if (isMainFuncPresent) {
             System.out.printf("Yes (Index %d)\n", mainFuncIndex);
         } else {
@@ -1022,9 +1023,86 @@ public class Xasm {
         }
     }
 
+    public void buildXSE() {
+        try {
+            Path executePath = Paths.get(sourceFile.replace(".xasm", "my.xse"));
+            Files.deleteIfExists(executePath);
+            Files.write(executePath, XSE_ID_STRING.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            Files.write(executePath, int2Bytes(VERSION_MAJOR, 1), StandardOpenOption.APPEND);
+            Files.write(executePath, int2Bytes(VERSION_MINOR, 1), StandardOpenOption.APPEND);
+            Files.write(executePath, int2Bytes(stackSize, 4), StandardOpenOption.APPEND);
+            Files.write(executePath, int2Bytes(globalDataSize, 4), StandardOpenOption.APPEND);
+            Files.write(executePath, int2Bytes(isMainFuncPresent ? 1 : 0, 1), StandardOpenOption.APPEND);
+            Files.write(executePath, int2Bytes(mainFuncIndex, 4), StandardOpenOption.APPEND);
+            Files.write(executePath, int2Bytes(instrStreamSize, 4), StandardOpenOption.APPEND);
+
+            for (int i = 0; i < instrStreamSize; i++) {
+                Instr instr = instrStream.get(i);
+                Files.write(executePath, int2Bytes(instr.getOpCode(), 2), StandardOpenOption.APPEND);
+                Files.write(executePath, int2Bytes(instr.getOpCount(), 1), StandardOpenOption.APPEND);
+
+                System.out.println(instr);
+                for (int j = 0; j < instr.getOpCount(); j++) {
+                    System.out.println(instr.getOpCount() + "-" + j);
+                    Op op = instr.getOpList().get(j);
+                    Files.write(executePath, int2Bytes(op.getType(), 1), StandardOpenOption.APPEND);
+
+                    switch (op.getType()) {
+                        case OP_TYPE_INT:
+                            Files.write(executePath, int2Bytes(op.getIntLiteral(), 4), StandardOpenOption.APPEND);
+                            break;
+                        case OP_TYPE_FLOAT:
+                            Files.write(executePath, int2Bytes(Float.floatToRawIntBits(op.getFloatLiteral()), 4), StandardOpenOption.APPEND);
+                            break;
+                        case OP_TYPE_STRING_INDEX:
+                            Files.write(executePath, int2Bytes(op.getStringTableIndex(), 4), StandardOpenOption.APPEND);
+                            break;
+                        case OP_TYPE_INSTR_INDEX:
+                            Files.write(executePath, int2Bytes(op.getInstrIndex(), 4), StandardOpenOption.APPEND);
+                            break;
+                        case OP_TYPE_ABS_STACK_INDEX:
+                            Files.write(executePath, int2Bytes(op.getStackIndex(), 4), StandardOpenOption.APPEND);
+                            break;
+                        case OP_TYPE_REL_STACK_INDEX:
+                            Files.write(executePath, int2Bytes(op.getStackIndex(), 4), StandardOpenOption.APPEND);
+                            Files.write(executePath, int2Bytes(op.getOffsetIndex(), 4), StandardOpenOption.APPEND);
+                            break;
+                        case OP_TYPE_FUNC_INDEX:
+                            Files.write(executePath, int2Bytes(op.getFunIndex(), 4), StandardOpenOption.APPEND);
+                            break;
+                        case OP_TYPE_HOST_API_CALL_INDEX:
+                            Files.write(executePath, int2Bytes(op.getRegCode(), 4), StandardOpenOption.APPEND);
+                            break;
+
+
+                    }
+                }
+            }
+
+            Files.write(executePath, int2Bytes(stringTable.size(), 4), StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private byte[] int2Bytes(int num, int count) {
+        byte[] bytes = new byte[count];
+        for (int i = 0; i < count; i++) {
+            bytes[i] = (byte) ((num >> (count - 1 - i) * 8) & 0xFF);
+        }
+        return bytes;
+    }
+
+    public static byte[] intToByte(int i, int count) {
+        byte[] targets = new byte[count];
+        targets[1] = (byte) (i & 0xFF);
+        return targets;
+    }
+
     public static void main(String[] args) throws IOException {
-        Xasm xasm = new Xasm("C:\\Users\\pingao.liu\\Desktop\\Programs\\Chapter 9\\XASM 0.4\\Source\\test_1.xasm");
+        Xasm xasm = new Xasm("C:\\Users\\pingao.liu\\Desktop\\Programs\\Chapter 9\\XASM 0.4\\Executable\\test_1.xasm");
         xasm.assmblSourceFile();
         xasm.printAssmblStats();
+        xasm.buildXSE();
     }
 }
