@@ -197,15 +197,15 @@ public class Lex2 {
             currentToken = Token.TOKEN_TYPE_FLOAT;
         } else if (ParseUtil.isIdentifier(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_IDENT;
-        } else if ("SETSTACKSIZE".equals(currentLexeme)) {
+        } else if ("SETSTACKSIZE".equalsIgnoreCase(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_SETSTACKSIZE;
-        } else if ("VAR".equals(currentLexeme)) {
+        } else if ("VAR".equalsIgnoreCase(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_VAR;
-        } else if ("FUNC".equals(currentLexeme)) {
+        } else if ("FUNC".equalsIgnoreCase(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_FUNC;
-        } else if ("PARAM".equals(currentLexeme)) {
+        } else if ("PARAM".equalsIgnoreCase(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_PARAM;
-        } else if ("_RETVAL".equals(currentLexeme)) {
+        } else if ("_RETVAL".equalsIgnoreCase(currentLexeme)) {
             currentToken = Token.TOKEN_TYPE_REG_RETVAL;
         }
 
@@ -244,7 +244,7 @@ public class Lex2 {
 
     public void exitOnCodeError(String msg) {
         System.out.printf("Error: %s.\n\n", msg);
-        System.out.printf("Line: %d\n", currentLine);
+        System.out.printf("Line: %d\n", currentLine + 1);
 
         // 将制表符替换为空格，更整齐
         String currentSourceLine = codes.get(currentLine);
